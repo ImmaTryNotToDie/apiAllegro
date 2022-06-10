@@ -59,7 +59,17 @@ class baselinkerUpdate{
             curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($apiParams));
             curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
             $response = json_decode(curl_exec($curl), true);
+
+            //WYJĄTKI
+            $file = fopen('exceptions.txt', 'r');
+            $line = explode(',' , fgets($file));
+            foreach ($line as $line){
+                $exceptionsList[$line] = '1';
+            }
+            fclose($file);
+
             foreach ($response['products'] as $shopProduct){
+                if (isset($exceptionsList[str_replace('L', '', $shopProduct['sku'])])) continue;
                 $this -> shopProductsData[] = $shopProduct;
             }
             $page ++;
@@ -101,11 +111,11 @@ class baselinkerUpdate{
                     break;
                     
                 if (isset($this -> products[str_replace('L', '', $product['sku'])]['stock'])){
-                    $this -> parameters = $this -> parameters . '"' . $product['id'] . '": {'
+                    $this -> parameters .= '"' . $product['id'] . '": {'
                     . '"bl_4604":' . $this -> products[str_replace('L', '', $product['sku'])]['stock'] . 
                     '},';
                 }else{
-                    $this -> parameters = $this -> parameters . '"' . $product['id']  . '": {'
+                    $this -> parameters .= '"' . $product['id']  . '": {'
                     . '"bl_4604":' . 0.00 . 
                     '},';
                     echo 'nie udalo się zaktualizować produktu ID: ' . $product['id']  . '<br>';
@@ -148,12 +158,12 @@ class baselinkerUpdate{
                     break;
                 if ($category == 'ALL' || $this -> shopProductsData[$product['id']]['category_id'] == $category){
                     if (isset($this -> products[str_replace('L', '', $product['sku'])]['our_price_brutto'])){
-                        $this -> parameters = $this -> parameters . '"' . $product['id'] . '": {'
+                        $this -> parameters .= '"' . $product['id'] . '": {'
                         . '"859":' . 
                         $this -> priceCalculation($this -> products[str_replace('L', '', $product['sku'])]['our_price_brutto'], $marginCategory, $margin) . 
                         '},';
                     }else{
-                        $this -> parameters = $this -> parameters . '"' . $product['id'] . '": {'
+                        $this -> parameters .= '"' . $product['id'] . '": {'
                         . '"859":' . 0.00 . 
                         '},';
                         echo 'nie udalo się zaktualizować produktu ID: ' . $product['id'] . '<br>';

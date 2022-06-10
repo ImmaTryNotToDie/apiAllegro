@@ -14,10 +14,12 @@
         function check(){
             $query = "SELECT ";
             for ($i = 0; $i <16; $i++){
-                $query = $query . "image" . $i . ", ";
+                $query .= "image" . $i . ", ";
             }
-            $query = $query . "product_id FROM T_TD_SUPPLIERS_ALL WHERE LENGTH(description0) > '20' AND stock > '2' AND restrictions = 0";
+            $query .= "product_id FROM T_TD_SUPPLIERS_ALL WHERE (LENGTH(description0) > '20' AND stock > '2' AND restrictions = 0 AND wasImported = 0) OR (exception = 1)";
             $objectsTable = mysqli_query($this->mysqlConnection, $query);
+
+            ini_set('default_socket_timeout', 5);
             while ($row = mysqli_fetch_array($objectsTable)){
                 $query = "UPDATE T_TD_SUPPLIERS_ALL
                 SET ";
@@ -25,16 +27,18 @@
                     if ($row["image$i"] !== ''){
                         $headers = get_headers($row["image$i"]);
                         if ($headers && strpos($headers[0], '200')){
-                            $query = $query . "image$i = '" . $row["image$i"] . "', ";
+                            $query .= "image$i = '" . $row["image$i"] . "', ";
                         }else{
-                            $query = $query . "image$i = '', ";
+                            $query .= "image$i = '', ";
                         }
                     }else{
-                        $query = $query . "image$i = '', ";
+                        $query .= "image$i = '', ";
                     }
                 }
                 $query = substr($query, 0, strlen($query) - 2) . " WHERE product_id = " . $row['product_id'];
+                ini_set('default_socket_timeout', 60);
                 mysqli_query($this -> mysqlConnection, $query);
+                $i++;
             }
         }
 

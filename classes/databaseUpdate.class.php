@@ -1,46 +1,8 @@
 <?php
 
-set_time_limit(3600);
 
 class databaseUpdate{
     private $mysqlConnection;
-
-    //główne zapytanie do bazy
-    private $query = "
-    SELECT * FROM (
-        SELECT * FROM (
-            SELECT * FROM (
-                SELECT * FROM(
-                    SELECT * FROM (
-                        SELECT * FROM (
-                            SELECT product_id, product_name, ean, our_price_brutto, tax, stock, product_code FROM T_TD_SUPPLIERS_PRODUCTS WHERE product_id IS NOT NULL) t_prod
-                            LEFT JOIN (SELECT product_id, description FROM T_TD_SUPPLIERS_DESCRIPTION) t_desc 
-                            USING (product_id)
-                            ORDER BY t_prod.product_id ASC, LENGTH(t_desc.description) DESC
-                        )t_joined
-                        GROUP BY t_joined.product_id
-                    )t_grouped
-                    LEFT JOIN (SELECT product_id, GROUP_CONCAT(value SEPARATOR'>') AS category FROM T_TD_SUPPLIERS_CATEGORIES GROUP BY product_id) t_cate 
-                    USING (product_id)
-                )t_grouped2
-                LEFT JOIN (SELECT product_id, GROUP_CONCAT(img_url SEPARATOR '|') AS images FROM T_TD_SUPPLIERS_IMAGES GROUP BY product_id) t_done
-                    USING (product_id)
-            )t_grouped3
-            LEFT JOIN (SELECT product_id, value AS producer FROM T_TD_SUPPLIERS_ATTRIBUTES WHERE atr_name = 'producer')t_producers
-            USING (product_id)
-        )t_grouped4
-        LEFT JOIN (SELECT product_id, value AS color FROM T_TD_SUPPLIERS_ATTRIBUTES WHERE atr_name = 'color')t_colors
-        USING (product_id)
-";
-
-        // zapytanie o index kategorii
-        private $queryCategories = "
-        SELECT t_cat.category, category_tree  FROM T_TD_SHOP_CATEGORIES_TREE
-        LEFT JOIN (SELECT product_id, GROUP_CONCAT(value SEPARATOR '>') AS category FROM T_TD_SUPPLIERS_CATEGORIES GROUP BY product_id) t_cat
-        USING (product_id)
-        GROUP BY t_cat.category
-        ";
-
 
     function __construct($host, $port, $username, $password, $database){
         $this->mysqlConnection = @mysqli_connect($host, $username, $password, $database, $port);
@@ -54,27 +16,18 @@ class databaseUpdate{
     }
 
 
-    function updateDatabase($attributes){
+    function updateDatabase($importAttributes, $query, $queryCategories){
 
-        $i = 0;
-        $j = 0;
         //pobieranie indexu kategorii category_tree > category
-        $objectsTable = @mysqli_query($this->mysqlConnection, $this -> queryCategories);
+        $objectsTable = @mysqli_query($this->mysqlConnection, $queryCategories);
         while ($row = mysqli_fetch_array($objectsTable)){
             $dbTableCategories[$row['category']] = $row['category_tree'];
         }
 
-        //pobieranie obecnie zapisanych produktów
-        $query = 'SELECT product_id FROM T_TD_SUPPLIERS_ALL';
+        //pobieranie danych o produktach
         $objectsTable = @mysqli_query($this->mysqlConnection, $query);
         while ($row = mysqli_fetch_array($objectsTable)){
-            $dbTableProducts[$row['product_id']] = $row['product_id'];
-        }
-
-        //pobieranie danych o produktach
-        $objectsTable = @mysqli_query($this->mysqlConnection, $this -> query);
-        while ($row = mysqli_fetch_array($objectsTable)){
-            foreach ($attributes as $attribute){
+            foreach ($importAttributes as $attribute){
                 $dbTable[$row['product_id']][$attribute] = $row[$attribute];
             }
 
@@ -94,9 +47,60 @@ class databaseUpdate{
         }
         fclose($file);
 
+        //WYJĄTKI
+        $file = fopen('exceptions.txt', 'r');
+        $line = explode(',' , fgets($file));
+        foreach ($line as $line){
+            $exceptionsList[$line] = '1';
+        }
+        fclose($file);
 
         //zapisywanie lub aktualizowanie tabeli głównej
+
+        //poczatek zapytania
+        $query = "REPLACE INTO T_TD_SUPPLIERS_ALL (
+                product_id, 
+                product_name, 
+                stock,
+                product_code, 
+                ean, 
+                sku, 
+                category, 
+                our_price_brutto, 
+                tax, 
+                weight, 
+                description0, 
+                description1, 
+                description2, 
+                description3, 
+                description4, 
+                image0, 
+                image1, 
+                image2, 
+                image3, 
+                image4, 
+                image5, 
+                image6, 
+                image7, 
+                image8, 
+                image9, 
+                image10, 
+                image11, 
+                image12, 
+                image13, 
+                image14, 
+                image15,
+                producer,
+                restrictions,
+                color,
+                width,
+                height,
+                wasModified,
+                wasImported,
+                exception
+                ) VALUES ";
         foreach ($dbTable as $product){
+            //ustalanie wartości dla każdego produktu
             $product_id = $product['product_id'];
             $product_name = $this -> skuCorrection($product['product_id']) . ' ' . $this -> nameCorrection($product['product_name']);
             $stock = $product['stock'];
@@ -137,130 +141,59 @@ class databaseUpdate{
             $color = $product['color'];
             $width = $this -> dimensionsSearch($this -> nameCorrection($product['product_name']), 'w');
             $height = $this -> dimensionsSearch($this -> nameCorrection($product['product_name']), 'h');
-            if(isset($dbTableProducts[$product_id])){
-                $query = "UPDATE T_TD_SUPPLIERS_ALL
-                SET
-                product_id = " . $product_id . ", 
-                product_name = '" . $product_name . "', 
-                stock = " . $stock . ", 
-                product_code = '" . $product_code . "', 
-                ean = '" . $ean . "', 
-                sku = '" . $sku . "', 
-                category = '" . $category . "', 
-                our_price_brutto = " . $our_price_brutto . ", 
-                tax = " . $tax . ", 
-                weight = " . $weight . ", 
-                description0 = '" . $description0 . "', 
-                description1 = '" . $description1 . "', 
-                description2 = '" . $description2 . "', 
-                description3 = '" . $description3 . "', 
-                description4 = '" . $description4 . "', 
-                image0 = '" . $image0 . "', 
-                image1 = '" . $image1 . "', 
-                image2 = '" . $image2 . "', 
-                image3 = '" . $image3 . "', 
-                image4 = '" . $image4 . "', 
-                image5 = '" . $image5 . "', 
-                image6 = '" . $image6 . "', 
-                image7 = '" . $image7 . "', 
-                image8 = '" . $image8 . "', 
-                image9 = '" . $image9 . "', 
-                image10 = '" . $image10 . "', 
-                image11 = '" . $image11 . "', 
-                image12 = '" . $image12 . "', 
-                image13 = '" . $image13 . "', 
-                image14 = '" . $image14 . "', 
-                image15 = '" . $image15 . "',
-                producer = '" . $producer . "',
-                restrictions = " . $restrictions . ",
-                color = '" . $color . "',
-                width = '" . $width . "',
-                height = '" . $height . "'
-                WHERE product_id = " . $product_id;
-                $j++;
-                mysqli_query($this -> mysqlConnection, $query);
+            $wasModified = 0;
+            $wasImported = 0;
+            if (isset($exceptionsList[$product['product_id']])){
+                $exception = 1;
             }else{
-                $query = "INSERT INTO T_TD_SUPPLIERS_ALL (
-                product_id, 
-                product_name, 
-                stock,
-                product_code, 
-                ean, 
-                sku, 
-                category, 
-                our_price_brutto, 
-                tax, 
-                weight, 
-                description0, 
-                description1, 
-                description2, 
-                description3, 
-                description4, 
-                image0, 
-                image1, 
-                image2, 
-                image3, 
-                image4, 
-                image5, 
-                image6, 
-                image7, 
-                image8, 
-                image9, 
-                image10, 
-                image11, 
-                image12, 
-                image13, 
-                image14, 
-                image15,
-                producer,
-                restrictions,
-                color,
-                width,
-                height
-                    ) VALUES (
-                " . $product_id . ", 
-                '" . $product_name . "', 
-                " . $stock . ", 
-                '" . $product_code . "', 
-                '" . $ean . "', 
-                '" . $sku . "', 
-                '" . $category . "', 
-                " . $our_price_brutto . ", 
-                " . $tax . ", 
-                " . $weight . ", 
-                '" . $description0 . "', 
-                '" . $description1 . "', 
-                '" . $description2 . "', 
-                '" . $description3 . "', 
-                '" . $description4 . "', 
-                '" . $image0 . "', 
-                '" . $image1 . "', 
-                '" . $image2 . "', 
-                '" . $image3 . "', 
-                '" . $image4 . "', 
-                '" . $image5 . "', 
-                '" . $image6 . "', 
-                '" . $image7 . "', 
-                '" . $image8 . "', 
-                '" . $image9 . "', 
-                '" . $image10 . "', 
-                '" . $image11 . "', 
-                '" . $image12 . "', 
-                '" . $image13 . "', 
-                '" . $image14 . "', 
-                '" . $image15 . "',
-                '" . $producer . "',
-                " . $restrictions . ",
-                '" . $color . "',
-                '" . $width . "',
-                '" . $height . "'
-                )";
-                mysqli_query($this -> mysqlConnection, $query);
-                $i++;
+                $exception = 0;
             }
+            // dopisywania zapytania dla każdego produktu
+            $query .= "(
+            " . $product_id . ", 
+            '" . $product_name . "', 
+            " . $stock . ", 
+            '" . $product_code . "', 
+            '" . $ean . "', 
+            '" . $sku . "', 
+            '" . $category . "', 
+            " . $our_price_brutto . ", 
+            " . $tax . ", 
+            " . $weight . ", 
+            '" . $description0 . "', 
+            '" . $description1 . "', 
+            '" . $description2 . "', 
+            '" . $description3 . "', 
+            '" . $description4 . "', 
+            '" . $image0 . "', 
+            '" . $image1 . "', 
+            '" . $image2 . "', 
+            '" . $image3 . "', 
+            '" . $image4 . "', 
+            '" . $image5 . "', 
+            '" . $image6 . "', 
+            '" . $image7 . "', 
+            '" . $image8 . "', 
+            '" . $image9 . "', 
+            '" . $image10 . "', 
+            '" . $image11 . "', 
+            '" . $image12 . "', 
+            '" . $image13 . "', 
+            '" . $image14 . "', 
+            '" . $image15 . "',
+            '" . $producer . "',
+            " . $restrictions . ",
+            '" . $color . "',
+            '" . $width . "',
+            '" . $height . "',
+            " . $wasModified . ",
+            " . $wasImported . ",
+            " . $exception . "
+            ), ";
         }
-        echo 'dodano: ' . $i . ' produktów. <br>';
-        echo 'zaktualizowano: ' . $j . ' produktów. <br>';
+        $query = substr($query, 0, strlen($query) - 2);
+        mysqli_query($this -> mysqlConnection, $query);
+        echo 'Aktualizacja zakończona pomyślnie!' . '<br>';
         
     }
     
@@ -333,34 +266,39 @@ class databaseUpdate{
             }
         }
         $description = substr($description, 4);
-
-        if (!$number){
-            $start = 0;
-        }
-
-        $pos = 0;
+        
+        $descriptions[0] = '';
+        $descriptions[1] = '';
+        $descriptions[2] = '';
+        $descriptions[3] = '';
+        $descriptions[4] = '';
 
         $linesTable = explode('<br>', $description);
 
         foreach ($linesTable as $line){
-            if ($pos + strlen($line) >= $number * 500){
-                if (!isset($start)){
-                    $start = $pos;
-                }
+            if (strlen($descriptions[0]) < 500){
+                $descriptions[0] = $descriptions[0] . '<br>' . $line;
+                continue;
             }
+            if (strlen($descriptions[1]) < 500){
+                $descriptions[1] = $descriptions[1] . '<br>' . $line;
+                continue;
+            }
+            if (strlen($descriptions[2]) < 500){
+                $descriptions[2] = $descriptions[2] . '<br>' . $line;
+                continue;
+            }
+            if (strlen($descriptions[3]) < 500){
+                $descriptions[3] = $descriptions[3] . '<br>' . $line;
+                continue;
+            }
+            if (strlen($descriptions[4]) < 500){
+                $descriptions[4] = $descriptions[4] . '<br>' . $line;
+                continue;
+            }
+        }
 
-            if ($pos + strlen($line) >= ($number + 1) * 500){
-                $end = $pos + strlen($line);
-            }
-            $pos = $pos + strlen($line) + 4;
-        }
-        if (isset($start) && isset($end)){
-            return substr($description, $start, $end - $start);
-        }
-        if (isset($start)){
-            return substr($description, $start);
-        }
-        return '';
+        return substr($descriptions[$number], 4);
     }
 
     // podział na obrazy
